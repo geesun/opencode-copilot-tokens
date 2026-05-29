@@ -1,0 +1,16 @@
+{
+  "name": "opencode-copilot-tokens",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Show per-session GitHub Copilot token usage and estimated cost in the opencode TUI sidebar",
+  "exports": {
+    "./tui": "./src/tui.tsx"
+  },
+  "devDependencies": {
+    "@opencode-ai/plugin": "*",
+    "@opentui/solid": "*",
+    "@opentui/core": "*",
+    "solid-js": "*",
+    "typescript": "^5"
+  }
+}
