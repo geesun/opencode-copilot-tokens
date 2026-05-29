@@ -51,6 +51,14 @@ describe("accumulate", () => {
       input: 150, output: 30, cacheRead: 15, cacheWrite: 1, reasoning: 7,
     })
   })
+
+  test("preserves estimatedCostUsd from prev (cost is set externally, not by accumulate)", () => {
+    const prev: ModelTotals = {
+      input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0, estimatedCostUsd: 1.23,
+    }
+    const result = accumulate(prev, { input: 1, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0 })
+    expect(result.estimatedCostUsd).toBe(1.23)
+  })
 })
 
 describe("costFor", () => {
@@ -96,5 +104,22 @@ describe("costFor", () => {
       input: 0, output: 0, cacheRead: 0, cacheWrite: 99999, reasoning: 0, estimatedCostUsd: 0,
     }
     expect(costFor(totals, pricing.models["gpt-5.2"])).toBe(0)
+  })
+
+  test("charges reasoning tokens at the output rate", () => {
+    // 100k reasoning @ $14 output rate = 1.40
+    const totals: ModelTotals = {
+      input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 100_000, estimatedCostUsd: 0,
+    }
+    expect(costFor(totals, pricing.models["gpt-5.2"])).toBeCloseTo(1.4, 6)
+  })
+
+  test("output and reasoning are billed independently (matches opencode session.ts:438)", () => {
+    // opencode reports output and reasoning as disjoint counts. Both bill at output rate.
+    // 200k output + 50k reasoning, both @ $15 = (200_000 + 50_000) * 15 / 1e6 = 3.75
+    const totals: ModelTotals = {
+      input: 0, output: 200_000, cacheRead: 0, cacheWrite: 0, reasoning: 50_000, estimatedCostUsd: 0,
+    }
+    expect(costFor(totals, pricing.models["claude-sonnet-4.5"])).toBeCloseTo(3.75, 6)
   })
 })

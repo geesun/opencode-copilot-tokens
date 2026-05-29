@@ -23,11 +23,16 @@ export const accumulate = (prev: ModelTotals, delta: StepDelta): ModelTotals => 
 // Pricing values are USD per 1,000,000 tokens.
 const PER_MILLION = 1_000_000
 
+// opencode reports `tokens.output` with `reasoning` already subtracted
+// (see opencode session/session.ts:413). Both fields are disjoint and
+// both are billed at the model's per-million `output` rate, matching
+// opencode's own cost formula (session/session.ts:438).
 export const costFor = (totals: ModelTotals, pricing: ModelPricing | null): number => {
   if (!pricing) return 0
   const input = (totals.input * pricing.input) / PER_MILLION
   const cached = (totals.cacheRead * pricing.cachedInput) / PER_MILLION
   const output = (totals.output * pricing.output) / PER_MILLION
+  const reasoning = (totals.reasoning * pricing.output) / PER_MILLION
   const cacheWrite = pricing.cacheWrite ? (totals.cacheWrite * pricing.cacheWrite) / PER_MILLION : 0
-  return input + cached + output + cacheWrite
+  return input + cached + output + reasoning + cacheWrite
 }
