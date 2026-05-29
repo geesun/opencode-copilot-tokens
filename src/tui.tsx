@@ -2,7 +2,7 @@ import type { TuiPlugin, TuiPluginApi, TuiPluginModule } from "@opencode-ai/plug
 import { createSignal, For, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import type { StepDelta } from "./compute"
-import { loadBundledPricing } from "./pricing"
+import { loadPricing, refreshPricing } from "./pricing"
 import { updateSession } from "./session"
 import { defaultDir, Storage } from "./storage"
 import type { PriceTable, SessionState, TurnSummary } from "./types"
@@ -17,7 +17,18 @@ const tui: TuiPlugin = async (api) => {
   // Restore the user's last preference. api.kv.get is synchronous; the second
   // arg is the first-run default.
   const [visible, setVisible] = createSignal(api.kv.get<boolean>(KV_VISIBLE, true))
-  const [pricing] = createSignal<PriceTable>(await loadBundledPricing())
+  const [pricing, setPricing] = createSignal<PriceTable>(await loadPricing())
+  const [justRefreshed, setJustRefreshed] = createSignal(false)
+  // Fire-and-forget background refresh. Failures are silent (network down,
+  // 404 from upstream URL move, etc.) — we just keep using the bundled or
+  // previously-cached pricing.
+  void (async () => {
+    const next = await refreshPricing()
+    if (!next) return
+    setPricing(next)
+    setJustRefreshed(true)
+    setTimeout(() => setJustRefreshed(false), 3000)
+  })()
   // Single source of truth for the sidebar render path. Mutating a plain
   // Map/object would NOT trigger re-render — see plan note above Task 7.
   const [sessions, setSessions] = createStore<Record<string, SessionState>>({})
@@ -93,7 +104,14 @@ const tui: TuiPlugin = async (api) => {
                 </box>
               }
             >
-              {(s) => <Panel api={api} state={s()} />}
+              {(s) => (
+                <Panel
+                  api={api}
+                  state={s()}
+                  pricingFetchedAt={pricing().fetchedAt}
+                  refreshed={justRefreshed()}
+                />
+              )}
             </Show>
           </Show>
         )
@@ -125,7 +143,32 @@ const tui: TuiPlugin = async (api) => {
 const fmt = (n: number): string => n.toLocaleString("en-US")
 const usd = (n: number): string => `$${n.toFixed(4)}`
 
-const Panel = (props: { api: TuiPluginApi; state: SessionState }) => {
+// Host sidebar is 42 cols with paddingLeft/Right 2 (→ 38 inside) and the
+// scrollbox child adds paddingRight 1, leaving 37 usable cols for our box.
+// Use 36 for a 1-col safety margin against future host changes.
+const PANEL_W = 36
+const LABEL_W = 10
+const VALUE_W = PANEL_W - LABEL_W - 1
+
+// "in" / "6"  ->  "in              6"
+const row = (label: string, value: string): string =>
+  label.padEnd(LABEL_W) + " " + value.padStart(VALUE_W)
+
+// Single horizontal rule character repeated. Light glyph keeps it subtle.
+const rule = (): string => "─".repeat(PANEL_W)
+
+// Section header with a trailing rule:  "Last turn ────────────"
+const section = (title: string): string => {
+  const pad = PANEL_W - title.length - 1
+  return title + " " + "─".repeat(Math.max(pad, 0))
+}
+
+const Panel = (props: {
+  api: TuiPluginApi
+  state: SessionState
+  pricingFetchedAt: string
+  refreshed: boolean
+}) => {
   const theme = () => props.api.theme.current
   const models = () => Object.entries(props.state.byModel)
   const total = () => models().reduce((sum, [, t]) => sum + t.estimatedCostUsd, 0)
@@ -135,52 +178,55 @@ const Panel = (props: { api: TuiPluginApi; state: SessionState }) => {
       <text fg={theme().text}>
         <b>Copilot Tokens</b>
       </text>
-      <Show when={props.state.currentModel}>
-        <text fg={theme().textMuted}>Model: {props.state.currentModel} (current)</text>
-      </Show>
+      <text fg={theme().textMuted}>
+        {row("pricing", props.pricingFetchedAt + (props.refreshed ? " ⟳" : ""))}
+      </text>
 
       <Show when={props.state.lastTurn}>
         {(turn: () => TurnSummary) => (
-          <box marginTop={1}>
-            <text fg={theme().text}>Last turn</text>
-            <text fg={theme().textMuted}>
-              in {fmt(turn().input)} out {fmt(turn().output)}
-            </text>
+          <box>
+            <text fg={theme().textMuted}>{section("Last turn")}</text>
+            <text fg={theme().text}>{row("in", fmt(turn().input))}</text>
+            <text fg={theme().text}>{row("out", fmt(turn().output))}</text>
             <Show when={turn().cacheRead > 0}>
-              <text fg={theme().textMuted}>cache read {fmt(turn().cacheRead)}</text>
+              <text fg={theme().textMuted}>{row("cache(i)", fmt(turn().cacheRead))}</text>
             </Show>
             <Show when={turn().cacheWrite > 0}>
-              <text fg={theme().textMuted}>cache write {fmt(turn().cacheWrite)}</text>
+              <text fg={theme().textMuted}>{row("cache(w)", fmt(turn().cacheWrite))}</text>
             </Show>
-            <text fg={theme().textMuted}>≈ {usd(turn().estimatedCostUsd)}</text>
+            <text fg={theme().text}>
+              <b>{row("cost", usd(turn().estimatedCostUsd))}</b>
+            </text>
           </box>
         )}
       </Show>
 
-      <box marginTop={1}>
-        <text fg={theme().text}>Session by model</text>
+      <box>
+        <text fg={theme().textMuted}>{section("Session by model")}</text>
         <For each={models()}>
           {([modelID, t]) => (
-            <box marginTop={1}>
-              <text fg={theme().textMuted}>{modelID}</text>
-              <text fg={theme().textMuted}>
-                in {fmt(t.input)} out {fmt(t.output)}
+            <box>
+              <text fg={theme().text}>
+                <b>{modelID}</b>
               </text>
+              <text fg={theme().textMuted}>{row("in", fmt(t.input))}</text>
+              <text fg={theme().textMuted}>{row("out", fmt(t.output))}</text>
               <Show when={t.cacheRead > 0}>
-                <text fg={theme().textMuted}>cache read {fmt(t.cacheRead)}</text>
+                <text fg={theme().textMuted}>{row("cache(i)", fmt(t.cacheRead))}</text>
               </Show>
               <Show when={t.cacheWrite > 0}>
-                <text fg={theme().textMuted}>cache write {fmt(t.cacheWrite)}</text>
+                <text fg={theme().textMuted}>{row("cache(w)", fmt(t.cacheWrite))}</text>
               </Show>
-              <text fg={theme().textMuted}>≈ {usd(t.estimatedCostUsd)}</text>
+              <text fg={theme().textMuted}>{row("cost", usd(t.estimatedCostUsd))}</text>
             </box>
           )}
         </For>
       </box>
 
-      <box marginTop={1}>
-        <text fg={theme().text}>Total ≈ {usd(total())}</text>
-      </box>
+      <text fg={theme().textMuted}>{rule()}</text>
+      <text fg={theme().text}>
+        <b>{row("TOTAL", usd(total()))}</b>
+      </text>
     </box>
   )
 }

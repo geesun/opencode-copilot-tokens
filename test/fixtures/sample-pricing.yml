@@ -1,0 +1,48 @@
+# This file defines per-token pricing for AI models available in GitHub Copilot.
+# Prices are per 1 million tokens.
+
+# OpenAI
+- model: 'GPT-4.1[^1]'
+  provider: openai
+  release_status: GA
+  category: Versatile
+  input: $2.00
+  cached_input: $0.50
+  output: $8.00
+
+- model: 'GPT-5 mini[^1]'
+  provider: openai
+  release_status: GA
+  category: Lightweight
+  input: $0.25
+  cached_input: $0.025
+  output: $2.00
+
+# Anthropic
+- model: Claude Sonnet 4.5
+  provider: anthropic
+  release_status: GA
+  category: Versatile
+  input: $3.00
+  cached_input: $0.30
+  output: $15.00
+  cache_write: $3.75
+
+- model: Claude Opus 4.6
+  provider: anthropic
+  release_status: GA
+  category: Powerful
+  input: $5.00
+  cached_input: $0.50
+  output: $25.00
+  cache_write: $6.25
+
+# Google
+- model: 'Gemini 2.5 Pro[^5]'
+  provider: google
+  release_status: GA
+  category: Powerful
+  input: $1.25
+  cached_input: $0.125
+  output: $10.00
+  notes: "Prompts \u2264200K tokens"
