@@ -49,4 +49,11 @@ describe("Storage", () => {
   test("path is deterministic and sessionID-keyed", () => {
     expect(storage.path("ses_abc")).toBe(join(dir, "ses_abc.json"))
   })
+
+  test("write overwrites existing state for same sessionID", async () => {
+    await storage.write(sample("ses_3"))
+    const updated: SessionState = { ...sample("ses_3"), lastUpdated: 999 }
+    await storage.write(updated)
+    expect(await storage.read("ses_3")).toEqual(updated)
+  })
 })

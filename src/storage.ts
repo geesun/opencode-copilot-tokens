@@ -22,6 +22,8 @@ export class Storage {
   async write(state: SessionState): Promise<void> {
     await mkdir(this.dir, { recursive: true })
     const target = this.path(state.sessionID)
+    // Caller must serialize writes per sessionID; tmp filename is not unique
+    // per call. opencode emits step-finish serially per session, so this is safe.
     const tmp = `${target}.tmp`
     await Bun.write(tmp, JSON.stringify(state, null, 2))
     await rename(tmp, target)
