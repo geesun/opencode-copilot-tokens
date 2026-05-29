@@ -4,6 +4,7 @@ import { createStore } from "solid-js/store"
 import type { StepDelta } from "./compute"
 import { loadBundledPricing } from "./pricing"
 import { updateSession } from "./session"
+import { defaultDir, Storage } from "./storage"
 import type { PriceTable, SessionState, TurnSummary } from "./types"
 
 const id = "opencode-copilot-tokens"
@@ -19,6 +20,20 @@ const tui: TuiPlugin = async (api) => {
   const [sessions, setSessions] = createStore<Record<string, SessionState>>({})
   // Internal-only lookup, never read in the render path, so a plain Map is fine.
   const meta = new Map<string, SessionMeta>()
+  const storage = new Storage(defaultDir())
+  // Per-session hydrate guard: read disk at most once per session per process.
+  const hydrated = new Set<string>()
+
+  const hydrate = async (sessionID: string) => {
+    if (hydrated.has(sessionID)) return
+    hydrated.add(sessionID)
+    const loaded = await storage.read(sessionID)
+    if (!loaded) return
+    // Do not clobber state that was already accumulated this run (a step-finish
+    // event may have arrived between our hydrate() call and the disk read).
+    if (sessions[sessionID]) return
+    setSessions(sessionID, loaded)
+  }
 
   // Disposers returned by api.event.on are auto-tracked by the plugin scope.
   api.event.on("message.updated", (event) => {
@@ -26,6 +41,10 @@ const tui: TuiPlugin = async (api) => {
     if (info.role !== "assistant") return
     if (!info.providerID || !info.modelID) return
     meta.set(info.sessionID, { providerID: info.providerID, modelID: info.modelID })
+    // Hydrate as soon as we see any assistant message for this session, so
+    // cumulative totals survive opencode restarts even before the user opens
+    // the sidebar.
+    void hydrate(info.sessionID)
   })
 
   api.event.on("message.part.updated", (event) => {
@@ -43,12 +62,20 @@ const tui: TuiPlugin = async (api) => {
     }
 
     setSessions(part.sessionID, (prev) => updateSession(prev, part.sessionID, m.modelID, delta, pricing()))
+    // Persist after every accumulation. Fire-and-forget: opencode emits
+    // step-finish serially per session so writes do not race for the same
+    // sessionID, and a brief disk lag does not affect rendering.
+    void storage.write(sessions[part.sessionID])
   })
 
   api.slots.register({
     order: 350,
     slots: {
       sidebar_content(_ctx, props) {
+        // Trigger hydration the first time the sidebar is asked about this
+        // session — covers the "user opens a session without sending a
+        // message" case where message.updated has not fired.
+        void hydrate(props.session_id)
         const state = () => sessions[props.session_id] ?? null
         return (
           <Show when={visible()}>
