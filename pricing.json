@@ -1,0 +1,29 @@
+{
+  "fetchedAt": "2026-05-29",
+  "source": "https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing",
+  "models": {
+    "gpt-4.1":            { "input": 2.00, "cachedInput": 0.50,  "output": 8.00,  "cacheWrite": null },
+    "gpt-5-mini":         { "input": 0.25, "cachedInput": 0.025, "output": 2.00,  "cacheWrite": null },
+    "gpt-5.2":            { "input": 1.75, "cachedInput": 0.175, "output": 14.00, "cacheWrite": null },
+    "gpt-5.2-codex":      { "input": 1.75, "cachedInput": 0.175, "output": 14.00, "cacheWrite": null },
+    "gpt-5.3-codex":      { "input": 1.75, "cachedInput": 0.175, "output": 14.00, "cacheWrite": null },
+    "gpt-5.4":            { "input": 2.50, "cachedInput": 0.25,  "output": 15.00, "cacheWrite": null },
+    "gpt-5.4-mini":       { "input": 0.75, "cachedInput": 0.075, "output": 4.50,  "cacheWrite": null },
+    "gpt-5.4-nano":       { "input": 0.20, "cachedInput": 0.02,  "output": 1.25,  "cacheWrite": null },
+    "gpt-5.5":            { "input": 5.00, "cachedInput": 0.50,  "output": 30.00, "cacheWrite": null },
+
+    "claude-haiku-4.5":   { "input": 1.00, "cachedInput": 0.10,  "output": 5.00,  "cacheWrite": 1.25 },
+    "claude-sonnet-4":    { "input": 3.00, "cachedInput": 0.30,  "output": 15.00, "cacheWrite": 3.75 },
+    "claude-sonnet-4.5":  { "input": 3.00, "cachedInput": 0.30,  "output": 15.00, "cacheWrite": 3.75 },
+    "claude-sonnet-4.6":  { "input": 3.00, "cachedInput": 0.30,  "output": 15.00, "cacheWrite": 3.75 },
+    "claude-opus-4.5":    { "input": 5.00, "cachedInput": 0.50,  "output": 25.00, "cacheWrite": 6.25 },
+    "claude-opus-4.6":    { "input": 5.00, "cachedInput": 0.50,  "output": 25.00, "cacheWrite": 6.25 },
+    "claude-opus-4.7":    { "input": 5.00, "cachedInput": 0.50,  "output": 25.00, "cacheWrite": 6.25 },
+    "claude-opus-4.8":    { "input": 5.00, "cachedInput": 0.50,  "output": 25.00, "cacheWrite": 6.25 },
+
+    "gemini-2.5-pro":     { "input": 1.25, "cachedInput": 0.125, "output": 10.00, "cacheWrite": null },
+    "gemini-3-flash":     { "input": 0.50, "cachedInput": 0.05,  "output": 3.00,  "cacheWrite": null },
+    "gemini-3.1-pro":     { "input": 2.00, "cachedInput": 0.20,  "output": 12.00, "cacheWrite": null },
+    "gemini-3.5-flash":   { "input": 1.50, "cachedInput": 0.15,  "output": 9.00,  "cacheWrite": null }
+  }
+}
