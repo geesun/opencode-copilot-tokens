@@ -1,9 +1,9 @@
-import type { TuiPlugin } from "@opencode-ai/plugin/tui"
+import type { TuiPlugin, TuiPluginModule } from "@opencode-ai/plugin/tui"
 import { createSignal, Show } from "solid-js"
 
-export const id = "opencode-copilot-tokens"
+const id = "opencode-copilot-tokens"
 
-export const tui: TuiPlugin = async (api) => {
+const tui: TuiPlugin = async (api) => {
   const [visible, setVisible] = createSignal(true)
 
   api.slots.register({
@@ -41,3 +41,7 @@ export const tui: TuiPlugin = async (api) => {
     ],
   })
 }
+
+const plugin: TuiPluginModule & { id: string } = { id, tui }
+
+export default plugin
