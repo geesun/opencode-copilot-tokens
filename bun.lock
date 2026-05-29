@@ -12,6 +12,12 @@
         "solid-js": "*",
         "typescript": "^5",
       },
+      "peerDependencies": {
+        "@opencode-ai/plugin": "*",
+        "@opentui/core": "*",
+        "@opentui/solid": "*",
+        "solid-js": "*",
+      },
     },
   },
   "packages": {

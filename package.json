@@ -6,6 +6,12 @@
   "exports": {
     "./tui": "./src/tui.tsx"
   },
+  "peerDependencies": {
+    "@opencode-ai/plugin": "*",
+    "@opentui/core": "*",
+    "@opentui/solid": "*",
+    "solid-js": "*"
+  },
   "devDependencies": {
     "@opencode-ai/plugin": "*",
     "@opentui/core": "*",
