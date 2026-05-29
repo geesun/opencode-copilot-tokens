@@ -9,11 +9,14 @@ import type { PriceTable, SessionState, TurnSummary } from "./types"
 
 const id = "opencode-copilot-tokens"
 const COPILOT = "github-copilot"
+const KV_VISIBLE = "copilot-tokens.visible"
 
 type SessionMeta = { providerID: string; modelID: string }
 
 const tui: TuiPlugin = async (api) => {
-  const [visible, setVisible] = createSignal(true)
+  // Restore the user's last preference. api.kv.get is synchronous; the second
+  // arg is the first-run default.
+  const [visible, setVisible] = createSignal(api.kv.get<boolean>(KV_VISIBLE, true))
   const [pricing] = createSignal<PriceTable>(await loadBundledPricing())
   // Single source of truth for the sidebar render path. Mutating a plain
   // Map/object would NOT trigger re-render — see plan note above Task 7.
@@ -108,7 +111,11 @@ const tui: TuiPlugin = async (api) => {
         namespace: "palette",
         slashName: "tokens",
         run() {
-          setVisible((x) => !x)
+          setVisible((x) => {
+            const next = !x
+            api.kv.set(KV_VISIBLE, next)
+            return next
+          })
         },
       },
     ],
