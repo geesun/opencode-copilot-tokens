@@ -5,9 +5,9 @@ import { createStore } from "solid-js/store"
 import { costBreakdown, type StepDelta } from "./compute"
 import { loadPricing, priceFor, refreshPricing } from "./pricing"
 import { loadQuota, type Quota } from "./quota"
-import { updateSession } from "./session"
+import { rollupByModel, updateSession } from "./session"
 import { defaultDir, Storage } from "./storage"
-import type { PriceTable, SessionState, TurnSummary } from "./types"
+import type { ModelTotals, PriceTable, SessionState, TurnSummary } from "./types"
 
 const id = "opencode-copilot-tokens"
 const COPILOT = "github-copilot"
@@ -40,6 +40,11 @@ const tui: TuiPlugin = async (api) => {
   // Single source of truth for the sidebar render path. Mutating a plain
   // Map/object would NOT trigger re-render — see plan note above Task 7.
   const [sessions, setSessions] = createStore<Record<string, SessionState>>({})
+  // childSessionID -> parentSessionID. opencode runs each subagent (Task tool)
+  // in its own child session whose totals must roll up into the parent the user
+  // is viewing — see rollupByModel in session.ts. A store so the sidebar
+  // re-renders when a subagent session is first learned about.
+  const [parentOf, setParentOf] = createStore<Record<string, string>>({})
   // Internal-only lookup, never read in the render path, so a plain Map is fine.
   const meta = new Map<string, SessionMeta>()
   const storage = new Storage(defaultDir())
@@ -98,6 +103,18 @@ const tui: TuiPlugin = async (api) => {
     refreshQuota()
   })
 
+  // Learn the parent of each subagent session so its cost rolls up into the
+  // viewed parent. session.updated/created carry the full Session, which has
+  // `parentID` set for subagent sessions. Hydrate the child too so its
+  // persisted totals survive an opencode restart.
+  const learnParent = (info: { id: string; parentID?: string }) => {
+    if (!info.parentID) return
+    setParentOf(info.id, info.parentID)
+    void hydrate(info.id)
+  }
+  api.event.on("session.updated", (event) => learnParent(event.properties.info))
+  api.event.on("session.created", (event) => learnParent(event.properties.info))
+
   api.slots.register({
     order: 350,
     slots: {
@@ -107,6 +124,9 @@ const tui: TuiPlugin = async (api) => {
         // message" case where message.updated has not fired.
         void hydrate(props.session_id)
         const state = () => sessions[props.session_id] ?? null
+        // Cumulative totals include this session plus every subagent
+        // descendant; lastTurn stays the viewed session's own last turn.
+        const byModel = () => rollupByModel(sessions, props.session_id, parentOf)
         return (
           <box>
             <QuotaSection api={api} quota={quota()} />
@@ -117,7 +137,7 @@ const tui: TuiPlugin = async (api) => {
                   <text fg={api.theme.current.textMuted}>(no Copilot turns yet)</text>
                 }
               >
-                {(s) => <Panel api={api} state={s()} pricing={pricing()} />}
+                {(s) => <Panel api={api} byModel={byModel()} lastTurn={s().lastTurn} pricing={pricing()} />}
               </Show>
             </Show>
           </box>
@@ -220,11 +240,12 @@ const QuotaSection = (props: { api: TuiPluginApi; quota: Quota | null }) => {
 
 const Panel = (props: {
   api: TuiPluginApi
-  state: SessionState
+  byModel: Record<string, ModelTotals>
+  lastTurn: TurnSummary | null
   pricing: PriceTable
 }) => {
   const theme = () => props.api.theme.current
-  const models = () => Object.entries(props.state.byModel)
+  const models = () => Object.entries(props.byModel)
   const total = () => models().reduce((sum, [, t]) => sum + t.estimatedCostUsd, 0)
   const breakdown = (modelID: string, totals: { input: number; output: number; cacheRead: number; cacheWrite: number; reasoning: number }) =>
     costBreakdown(
@@ -234,7 +255,7 @@ const Panel = (props: {
 
   return (
     <box>
-      <Show when={props.state.lastTurn}>
+      <Show when={props.lastTurn}>
         {(turn: () => TurnSummary) => {
           const b = () => breakdown(turn().model, turn())
           return (
