@@ -4,6 +4,7 @@ import { createSignal, For, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import type { StepDelta } from "./compute"
 import { loadPricing, refreshPricing } from "./pricing"
+import { loadQuota, type Quota } from "./quota"
 import { updateSession } from "./session"
 import { defaultDir, Storage } from "./storage"
 import type { PriceTable, SessionState, TurnSummary } from "./types"
@@ -19,6 +20,15 @@ const tui: TuiPlugin = async (api) => {
   // arg is the first-run default.
   const [visible, setVisible] = createSignal(api.kv.get<boolean>(KV_VISIBLE, true))
   const [pricing, setPricing] = createSignal<PriceTable>(await loadPricing())
+  // Plan-level quota (premium requests / AI credits) from
+  // /copilot_internal/user. Null = not yet loaded, no Copilot auth, or the
+  // request failed. Refreshed on plugin start, on every idle, and via the
+  // /copilot-refresh slash command.
+  const [quota, setQuota] = createSignal<Quota | null>(null)
+  const refreshQuota = () => {
+    void loadQuota().then(setQuota)
+  }
+  refreshQuota()
   // Fire-and-forget background refresh. Failures are silent (network down,
   // 404 from upstream URL move, etc.) — we just keep using the bundled or
   // previously-cached pricing.
@@ -80,6 +90,14 @@ const tui: TuiPlugin = async (api) => {
     void storage.write(sessions[part.sessionID])
   })
 
+  // Refresh plan quota whenever a turn finishes — that's when the server-side
+  // counter has just been decremented, so the user gets fresh numbers
+  // without an explicit /copilot-refresh.
+  api.event.on("session.status", (event) => {
+    if (event.properties.status?.type !== "idle") return
+    refreshQuota()
+  })
+
   api.slots.register({
     order: 350,
     slots: {
@@ -90,21 +108,19 @@ const tui: TuiPlugin = async (api) => {
         void hydrate(props.session_id)
         const state = () => sessions[props.session_id] ?? null
         return (
-          <Show when={visible()}>
-            <Show
-              when={state()}
-              fallback={
-                <box>
-                  <text fg={api.theme.current.text}>
-                    <b>Copilot Tokens</b>
-                  </text>
+          <box>
+            <QuotaSection api={api} quota={quota()} />
+            <Show when={visible()}>
+              <Show
+                when={state()}
+                fallback={
                   <text fg={api.theme.current.textMuted}>(no Copilot turns yet)</text>
-                </box>
-              }
-            >
-              {(s) => <Panel api={api} state={s()} />}
+                }
+              >
+                {(s) => <Panel api={api} state={s()} />}
+              </Show>
             </Show>
-          </Show>
+          </box>
         )
       },
     },
@@ -125,6 +141,16 @@ const tui: TuiPlugin = async (api) => {
             api.kv.set(KV_VISIBLE, next)
             return next
           })
+        },
+      },
+      {
+        name: "copilot-tokens.refresh",
+        title: "Refresh Copilot plan quota",
+        category: "Copilot",
+        namespace: "palette",
+        slashName: "copilot-refresh",
+        run() {
+          refreshQuota()
         },
       },
     ],
@@ -154,6 +180,34 @@ const section = (title: string): string => {
   return title + " " + "─".repeat(Math.max(pad, 0))
 }
 
+// "Copilot 10.0% (100/1000)"  — single-line header that doubles as the
+// sidebar title and the live quota display. Highlighted in `warning` so it
+// stands out from the muted section headers below.
+const quotaLine = (q: Quota): string => {
+  if (q.unlimited) return "Copilot ∞"
+  return `Copilot ${(100 - q.percentRemaining).toFixed(1)}% (${fmt(q.used)}/${fmt(q.entitlement)})`
+}
+
+const QuotaSection = (props: { api: TuiPluginApi; quota: Quota | null }) => {
+  const theme = () => props.api.theme.current
+  return (
+    <Show
+      when={props.quota}
+      fallback={
+        <text fg={theme().text}>
+          <b>Copilot Tokens</b>
+        </text>
+      }
+    >
+      {(quota: () => Quota) => (
+        <text fg={theme().warning}>
+          <b>{quotaLine(quota())}</b>
+        </text>
+      )}
+    </Show>
+  )
+}
+
 const Panel = (props: {
   api: TuiPluginApi
   state: SessionState
@@ -164,10 +218,6 @@ const Panel = (props: {
 
   return (
     <box>
-      <text fg={theme().text}>
-        <b>Copilot Tokens</b>
-      </text>
-
       <Show when={props.state.lastTurn}>
         {(turn: () => TurnSummary) => (
           <box>

@@ -4,8 +4,7 @@ A TUI sidebar plugin for [opencode](https://opencode.ai) that tracks per-session
 GitHub Copilot token usage and estimated cost, broken down by model.
 
 ```
-Copilot Tokens
-pricing       2026-05-29
+Copilot 25.0% (75/300)
 Last turn ──────────────
 in                     6
 out                    8
@@ -31,8 +30,11 @@ TOTAL            $0.2982
 
 ## Features
 
+- Sidebar header showing **plan quota** (always visible, highlighted)
 - Sidebar panel showing **last turn** + **cumulative session by model** + **total**
-- `/copilot-tokens` slash command toggles the panel; preference persists across restarts
+- `/copilot-tokens` slash command toggles the token/cost panel (the quota header
+  stays visible); preference persists across restarts
+- `/copilot-refresh` re-fetches the plan quota on demand (also auto-refreshes on every idle)
 - Per-session totals persist to disk, so they survive restarts
 - Pricing data bundled and **refreshed daily** from the official GitHub Copilot
   [`models-and-pricing.yml`](https://github.com/github/docs/blob/main/data/tables/copilot/models-and-pricing.yml)
@@ -99,7 +101,14 @@ and stick to it.
 
 - Open any session that talks to a Copilot model. The panel populates as the
   model produces its first step.
-- Run `/copilot-tokens` to hide or show the panel.
+- The **quota header** (`Copilot X% (used/total)`) appears as soon as the
+  GitHub Copilot OAuth token is detected at
+  `~/.local/share/opencode/auth.json` — it works even before the first
+  Copilot turn, and it stays visible even when the token panel is collapsed.
+- Run `/copilot-tokens` to hide or show the token/cost panel below the quota
+  header.
+- Run `/copilot-refresh` to force a quota re-fetch (the plugin also refreshes
+  automatically whenever a session goes idle).
 - Run any number of turns, switch models mid-session — the panel keeps a
   running total per model.
 
@@ -138,6 +147,24 @@ On startup the plugin asynchronously fetches the latest YAML and caches the
 parsed table to `~/.cache/opencode/copilot-pricing.json` (TTL 24h). Network
 failures are silent — the bundled prices are always available as a fallback.
 
+### Plan quota
+
+The **Plan quota** section calls
+`GET https://api.github.com/copilot_internal/user` with the GitHub Copilot
+OAuth refresh token from `~/.local/share/opencode/auth.json`. The response
+includes `quota_snapshots` keyed by quota type; the plugin reads the first
+one that exists, in priority order:
+
+1. `premium_models` — the new key introduced for the June 2026 AI-credit
+   pricing transition
+2. `premium_interactions` — the legacy "premium requests" key (still emitted
+   for accounts on paid annual plans through their renewal)
+3. `chat` — used for Free Copilot accounts
+
+This fallback chain mirrors what VS Code's Copilot Chat extension does in
+[`chatQuotaServiceImpl.ts`](https://github.com/microsoft/vscode-copilot-chat/blob/main/src/platform/chat/common/chatQuotaServiceImpl.ts),
+so the plugin keeps working across the transition without code changes.
+
 ### Caveat: not your actual GitHub bill
 
 Copilot bills customers in **premium requests** (a flat per-call quota), not
@@ -158,10 +185,10 @@ Delete any of these freely; they will be recreated.
 
 ```bash
 bun install
-bun test           # 29 tests across compute / pricing / storage / session / parse
+bun test           # 38 tests across compute / pricing / storage / session / quota / parse
 bunx tsc --noEmit  # type check
 ```
 
-The plugin is a single SolidJS component (`src/tui.tsx`) on top of four pure
-modules (`compute`, `pricing`, `storage`, `session`) each covered by its own
-test file.
+The plugin is a single SolidJS component (`src/tui.tsx`) on top of pure
+modules (`compute`, `pricing`, `storage`, `session`, `quota`, `auth`) each
+covered by its own test file where applicable.
