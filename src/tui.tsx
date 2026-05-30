@@ -2,8 +2,8 @@
 import type { TuiPlugin, TuiPluginApi, TuiPluginModule } from "@opencode-ai/plugin/tui"
 import { createSignal, For, Show } from "solid-js"
 import { createStore } from "solid-js/store"
-import type { StepDelta } from "./compute"
-import { loadPricing, refreshPricing } from "./pricing"
+import { costBreakdown, type StepDelta } from "./compute"
+import { loadPricing, priceFor, refreshPricing } from "./pricing"
 import { loadQuota, type Quota } from "./quota"
 import { updateSession } from "./session"
 import { defaultDir, Storage } from "./storage"
@@ -117,7 +117,7 @@ const tui: TuiPlugin = async (api) => {
                   <text fg={api.theme.current.textMuted}>(no Copilot turns yet)</text>
                 }
               >
-                {(s) => <Panel api={api} state={s()} />}
+                {(s) => <Panel api={api} state={s()} pricing={pricing()} />}
               </Show>
             </Show>
           </box>
@@ -167,7 +167,17 @@ const PANEL_W = 36
 const LABEL_W = 10
 const VALUE_W = PANEL_W - LABEL_W - 1
 
-// "in" / "6"  ->  "in              6"
+// 3-column row: label | right-aligned tokens | right-aligned cost.
+//   9 + 1 + 11 + 1 + 14 = 36
+const COL_LABEL = 9
+const COL_TOK = 11
+const COL_COST = PANEL_W - COL_LABEL - COL_TOK - 2
+
+// "in" / "147" / "$0.0004"  ->  "in              147   $0.0004"
+const row3 = (label: string, tokens: string, cost: string): string =>
+  label.padEnd(COL_LABEL) + " " + tokens.padStart(COL_TOK) + " " + cost.padStart(COL_COST)
+
+// 2-column row, used by quota / total rows where there is no token count.
 const row = (label: string, value: string): string =>
   label.padEnd(LABEL_W) + " " + value.padStart(VALUE_W)
 
@@ -211,53 +221,74 @@ const QuotaSection = (props: { api: TuiPluginApi; quota: Quota | null }) => {
 const Panel = (props: {
   api: TuiPluginApi
   state: SessionState
+  pricing: PriceTable
 }) => {
   const theme = () => props.api.theme.current
   const models = () => Object.entries(props.state.byModel)
   const total = () => models().reduce((sum, [, t]) => sum + t.estimatedCostUsd, 0)
+  const breakdown = (modelID: string, totals: { input: number; output: number; cacheRead: number; cacheWrite: number; reasoning: number }) =>
+    costBreakdown(
+      { ...totals, estimatedCostUsd: 0 },
+      priceFor(modelID, props.pricing),
+    )
 
   return (
     <box>
       <Show when={props.state.lastTurn}>
-        {(turn: () => TurnSummary) => (
-          <box>
-            <text fg={theme().textMuted}>{section("Last turn")}</text>
-            <text fg={theme().textMuted}>{row("in", fmt(turn().input))}</text>
-            <text fg={theme().textMuted}>{row("out", fmt(turn().output))}</text>
-            <Show when={turn().cacheRead > 0}>
-              <text fg={theme().textMuted}>{row("cache(i)", fmt(turn().cacheRead))}</text>
-            </Show>
-            <Show when={turn().cacheWrite > 0}>
-              <text fg={theme().textMuted}>{row("cache(w)", fmt(turn().cacheWrite))}</text>
-            </Show>
-            <text fg={theme().text}>
-              <b>{row("cost", usd(turn().estimatedCostUsd))}</b>
-            </text>
-          </box>
-        )}
+        {(turn: () => TurnSummary) => {
+          const b = () => breakdown(turn().model, turn())
+          return (
+            <box>
+              <text fg={theme().textMuted}>{section("Last turn")}</text>
+              <text fg={theme().text}>
+                <b>{turn().model}</b>
+              </text>
+              <text fg={theme().textMuted}>{row3("in", fmt(turn().input), usd(b().input))}</text>
+              <text fg={theme().textMuted}>{row3("out", fmt(turn().output), usd(b().output))}</text>
+              <Show when={turn().cacheRead > 0}>
+                <text fg={theme().textMuted}>{row3("cache(r)", fmt(turn().cacheRead), usd(b().cacheRead))}</text>
+              </Show>
+              <Show when={turn().cacheWrite > 0}>
+                <text fg={theme().textMuted}>{row3("cache(w)", fmt(turn().cacheWrite), usd(b().cacheWrite))}</text>
+              </Show>
+              <Show when={turn().reasoning > 0}>
+                <text fg={theme().textMuted}>{row3("think", fmt(turn().reasoning), usd(b().reasoning))}</text>
+              </Show>
+              <text fg={theme().text}>
+                <b>{row3("cost", "", usd(turn().estimatedCostUsd))}</b>
+              </text>
+            </box>
+          )
+        }}
       </Show>
 
       <box>
         <text fg={theme().textMuted}>{section("Session by model")}</text>
         <For each={models()}>
-          {([modelID, t]) => (
-            <box>
-              <text fg={theme().text}>
-                <b>{modelID}</b>
-              </text>
-              <text fg={theme().textMuted}>{row("in", fmt(t.input))}</text>
-              <text fg={theme().textMuted}>{row("out", fmt(t.output))}</text>
-              <Show when={t.cacheRead > 0}>
-                <text fg={theme().textMuted}>{row("cache(i)", fmt(t.cacheRead))}</text>
-              </Show>
-              <Show when={t.cacheWrite > 0}>
-                <text fg={theme().textMuted}>{row("cache(w)", fmt(t.cacheWrite))}</text>
-              </Show>
-              <text fg={theme().text}>
-                <b>{row("cost", usd(t.estimatedCostUsd))}</b>
-              </text>
-            </box>
-          )}
+          {([modelID, t]) => {
+            const b = () => breakdown(modelID, t)
+            return (
+              <box>
+                <text fg={theme().text}>
+                  <b>{modelID}</b>
+                </text>
+                <text fg={theme().textMuted}>{row3("in", fmt(t.input), usd(b().input))}</text>
+                <text fg={theme().textMuted}>{row3("out", fmt(t.output), usd(b().output))}</text>
+                <Show when={t.cacheRead > 0}>
+                  <text fg={theme().textMuted}>{row3("cache(r)", fmt(t.cacheRead), usd(b().cacheRead))}</text>
+                </Show>
+                <Show when={t.cacheWrite > 0}>
+                  <text fg={theme().textMuted}>{row3("cache(w)", fmt(t.cacheWrite), usd(b().cacheWrite))}</text>
+                </Show>
+                <Show when={t.reasoning > 0}>
+                  <text fg={theme().textMuted}>{row3("think", fmt(t.reasoning), usd(b().reasoning))}</text>
+                </Show>
+                <text fg={theme().text}>
+                  <b>{row3("cost", "", usd(t.estimatedCostUsd))}</b>
+                </text>
+              </box>
+            )
+          }}
         </For>
       </box>
 
