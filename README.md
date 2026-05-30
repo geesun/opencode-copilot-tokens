@@ -40,69 +40,55 @@ TOTAL            $0.2982
 
 ## Install
 
-The easiest way is to let opencode fetch the plugin straight from GitHub. You
-can also install it from a local clone for development.
+1. Clone the repo somewhere convenient. Two common choices:
 
-### From GitHub (recommended)
+   - **Globally** for every workspace:
+     ```sh
+     git clone https://github.com/geesun/opencode-copilot-tokens.git \
+       ~/.config/opencode/plugins/opencode-copilot-tokens
+     ```
+   - **Per-workspace**:
+     ```sh
+     git clone https://github.com/geesun/opencode-copilot-tokens.git \
+       <workspace>/.opencode/plugins/opencode-copilot-tokens
+     ```
 
-opencode's plugin loader accepts any spec [`npm-package-arg`](https://github.com/npm/npm-package-arg)
-understands, including git URLs. opencode will git-clone the repo into its own
-cache and run `bun install` for you on first start.
+2. Install the plugin's runtime peer deps once:
 
-Edit (or create) one of:
+   ```sh
+   cd <clone-dir> && bun install
+   ```
 
-- **Global** — `~/.config/opencode/tui.json` (plugin available in every workspace)
-- **Per-workspace** — `<workspace>/.opencode/tui.jsonc` (plugin scoped to one project)
+3. Register the directory in one of:
 
-…and add the plugin spec:
-
-```jsonc
-{
-  "$schema": "https://opencode.ai/tui.json",
-  "plugin": [
-    "git+https://github.com/geesun/opencode-copilot-tokens.git#v0.1.0"
-  ]
-}
-```
-
-Other equivalent spec forms:
-
-| spec | meaning |
-| ---- | ------- |
-| `"github:geesun/opencode-copilot-tokens"` | latest commit on default branch |
-| `"github:geesun/opencode-copilot-tokens#v0.1.0"` | shorthand, pinned to a tag |
-| `"git+https://github.com/geesun/opencode-copilot-tokens.git#main"` | HTTPS, branch ref |
-| `"git+ssh://git@github.com/geesun/opencode-copilot-tokens.git#v0.1.0"` | SSH, requires git creds |
-
-Pinning to a tag (`#v0.1.0`) is recommended so upstream changes do not break
-your TUI silently.
-
-Restart `opencode`. The first start will be a few seconds slower while the
-plugin is cloned and its peer dependencies are resolved against opencode's
-bundled SolidJS / OpenTUI.
-
-### From a local clone (development)
-
-1. Clone the repo somewhere convenient, e.g. `<workspace>/.opencode/plugins/opencode-copilot-tokens/`.
-2. Inside the clone, run `bun install`.
-3. Point `tui.jsonc` at the directory:
+   - **Global** — `~/.config/opencode/tui.json`
+   - **Per-workspace** — `<workspace>/.opencode/tui.jsonc`
 
    ```jsonc
    {
      "$schema": "https://opencode.ai/tui.json",
      "plugin": ["./plugins/opencode-copilot-tokens"]
+     // or absolute: "/Users/you/.config/opencode/plugins/opencode-copilot-tokens"
    }
    ```
 
 4. Restart `opencode`.
 
+### Updating
+
+```sh
+cd <clone-dir> && git pull && bun install
+```
+
+Restart `opencode` to pick up the new build.
+
 ### Avoid double-loading
 
-If the same plugin is registered in both global and workspace configs, opencode
+If you register the plugin in both global and workspace configs, opencode
 deduplicates by package name — so identical specs are safe. But registering it
-under two **different** specs (e.g. once as a local path, once as a GitHub URL)
-may load it twice and render the sidebar panel twice. Pick one source and stick
-to it.
+under two **different** specs (e.g. once as `./plugins/...`, once as the
+absolute path) may load it twice and render the sidebar panel twice. Pick one
+and stick to it.
 
 > **Why `tui.json` and not `opencode.json`?** opencode's TUI process loads its
 > own config file independent of the server's `opencode.json`. A plugin with
