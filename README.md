@@ -32,7 +32,7 @@ TOTAL            $0.2982
 ## Features
 
 - Sidebar panel showing **last turn** + **cumulative session by model** + **total**
-- `/tokens` slash command toggles the panel; preference persists across restarts
+- `/copilot-tokens` slash command toggles the panel; preference persists across restarts
 - Per-session totals persist to disk, so they survive restarts
 - Pricing data bundled and **refreshed daily** from the official GitHub Copilot
   [`models-and-pricing.yml`](https://github.com/github/docs/blob/main/data/tables/copilot/models-and-pricing.yml)
@@ -113,7 +113,7 @@ to it.
 
 - Open any session that talks to a Copilot model. The panel populates as the
   model produces its first step.
-- Run `/tokens` to hide or show the panel.
+- Run `/copilot-tokens` to hide or show the panel.
 - Run any number of turns, switch models mid-session — the panel keeps a
   running total per model.
 

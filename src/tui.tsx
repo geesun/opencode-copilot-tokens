@@ -127,7 +127,7 @@ const tui: TuiPlugin = async (api) => {
         title: "Toggle Copilot tokens panel",
         category: "Copilot",
         namespace: "palette",
-        slashName: "tokens",
+        slashName: "copilot-tokens",
         run() {
           setVisible((x) => {
             const next = !x
