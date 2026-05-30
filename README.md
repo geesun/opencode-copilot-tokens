@@ -134,10 +134,9 @@ input   × input_price          / 1,000,000
 
 Prices come from `pricing.json`, which mirrors the GitHub Copilot
 [`models-and-pricing.yml`](https://github.com/github/docs/blob/main/data/tables/copilot/models-and-pricing.yml).
-On startup the plugin asynchronously fetches the latest YAML; on success it
-caches the parsed table to `~/.cache/opencode/copilot-pricing.json` and shows a
-brief `⟳` indicator next to the date. The cache TTL is 24h. Network failures
-are silent — the bundled prices are always available as a fallback.
+On startup the plugin asynchronously fetches the latest YAML and caches the
+parsed table to `~/.cache/opencode/copilot-pricing.json` (TTL 24h). Network
+failures are silent — the bundled prices are always available as a fallback.
 
 ### Caveat: not your actual GitHub bill
 

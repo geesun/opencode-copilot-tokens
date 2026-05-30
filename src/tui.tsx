@@ -19,7 +19,6 @@ const tui: TuiPlugin = async (api) => {
   // arg is the first-run default.
   const [visible, setVisible] = createSignal(api.kv.get<boolean>(KV_VISIBLE, true))
   const [pricing, setPricing] = createSignal<PriceTable>(await loadPricing())
-  const [justRefreshed, setJustRefreshed] = createSignal(false)
   // Fire-and-forget background refresh. Failures are silent (network down,
   // 404 from upstream URL move, etc.) — we just keep using the bundled or
   // previously-cached pricing.
@@ -27,8 +26,6 @@ const tui: TuiPlugin = async (api) => {
     const next = await refreshPricing()
     if (!next) return
     setPricing(next)
-    setJustRefreshed(true)
-    setTimeout(() => setJustRefreshed(false), 3000)
   })()
   // Single source of truth for the sidebar render path. Mutating a plain
   // Map/object would NOT trigger re-render — see plan note above Task 7.
@@ -105,14 +102,7 @@ const tui: TuiPlugin = async (api) => {
                 </box>
               }
             >
-              {(s) => (
-                <Panel
-                  api={api}
-                  state={s()}
-                  pricingFetchedAt={pricing().fetchedAt}
-                  refreshed={justRefreshed()}
-                />
-              )}
+              {(s) => <Panel api={api} state={s()} />}
             </Show>
           </Show>
         )
@@ -167,8 +157,6 @@ const section = (title: string): string => {
 const Panel = (props: {
   api: TuiPluginApi
   state: SessionState
-  pricingFetchedAt: string
-  refreshed: boolean
 }) => {
   const theme = () => props.api.theme.current
   const models = () => Object.entries(props.state.byModel)
@@ -179,16 +167,13 @@ const Panel = (props: {
       <text fg={theme().text}>
         <b>Copilot Tokens</b>
       </text>
-      <text fg={theme().textMuted}>
-        {row("pricing", props.pricingFetchedAt + (props.refreshed ? " ⟳" : ""))}
-      </text>
 
       <Show when={props.state.lastTurn}>
         {(turn: () => TurnSummary) => (
           <box>
             <text fg={theme().textMuted}>{section("Last turn")}</text>
-            <text fg={theme().text}>{row("in", fmt(turn().input))}</text>
-            <text fg={theme().text}>{row("out", fmt(turn().output))}</text>
+            <text fg={theme().textMuted}>{row("in", fmt(turn().input))}</text>
+            <text fg={theme().textMuted}>{row("out", fmt(turn().output))}</text>
             <Show when={turn().cacheRead > 0}>
               <text fg={theme().textMuted}>{row("cache(i)", fmt(turn().cacheRead))}</text>
             </Show>
@@ -218,7 +203,9 @@ const Panel = (props: {
               <Show when={t.cacheWrite > 0}>
                 <text fg={theme().textMuted}>{row("cache(w)", fmt(t.cacheWrite))}</text>
               </Show>
-              <text fg={theme().textMuted}>{row("cost", usd(t.estimatedCostUsd))}</text>
+              <text fg={theme().text}>
+                <b>{row("cost", usd(t.estimatedCostUsd))}</b>
+              </text>
             </box>
           )}
         </For>
