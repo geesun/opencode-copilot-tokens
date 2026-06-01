@@ -165,9 +165,6 @@ const tui: TuiPlugin = async (api) => {
         return (
           <box>
             <QuotaSection api={api} quota={quota()} />
-            <Show when={usage()}>
-              {(u: () => RangeUsage[]) => <UsagePanel api={api} ranges={u()} />}
-            </Show>
             <Show when={visible()}>
               <Show
                 when={state()}
@@ -177,6 +174,9 @@ const tui: TuiPlugin = async (api) => {
               >
                 {(s) => <Panel api={api} byModel={byModel()} lastTurn={s().lastTurn} pricing={pricing()} />}
               </Show>
+            </Show>
+            <Show when={usage()}>
+              {(u: () => RangeUsage[]) => <UsagePanel api={api} ranges={u()} />}
             </Show>
           </box>
         )
