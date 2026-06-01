@@ -2,11 +2,11 @@
 import type { TuiPlugin, TuiPluginApi, TuiPluginModule } from "@opencode-ai/plugin/tui"
 import { createSignal, For, Show } from "solid-js"
 import { createStore } from "solid-js/store"
-import { costBreakdown, type StepDelta } from "./compute"
+import { costBreakdown, costFor, emptyTotals, type StepDelta } from "./compute"
+import { Db, dbPath } from "./db"
 import { loadPricing, priceFor, refreshPricing } from "./pricing"
 import { loadQuota, type Quota } from "./quota"
 import { rollupByModel, updateSession } from "./session"
-import { defaultDir, Storage } from "./storage"
 import type { ModelTotals, PriceTable, SessionState, TurnSummary } from "./types"
 
 const id = "opencode-copilot-tokens"
@@ -47,19 +47,36 @@ const tui: TuiPlugin = async (api) => {
   const [parentOf, setParentOf] = createStore<Record<string, string>>({})
   // Internal-only lookup, never read in the render path, so a plain Map is fine.
   const meta = new Map<string, SessionMeta>()
-  const storage = new Storage(defaultDir())
+  const db = new Db(dbPath())
+  db.pruneOlderThan(120)
+  // Tracks the local date of the last retention prune so we prune at most once
+  // per local day (on the first write of a new day).
+  let lastPrunedDate = new Date().toLocaleDateString("en-CA") // YYYY-MM-DD
   // Per-session hydrate guard: read disk at most once per session per process.
   const hydrated = new Set<string>()
 
-  const hydrate = async (sessionID: string) => {
+  const hydrate = (sessionID: string) => {
     if (hydrated.has(sessionID)) return
     hydrated.add(sessionID)
-    const loaded = await storage.read(sessionID)
-    if (!loaded) return
-    // Do not clobber state that was already accumulated this run (a step-finish
-    // event may have arrived between our hydrate() call and the disk read).
+    const byTokens = db.loadSession(sessionID)
+    if (Object.keys(byTokens).length === 0) return
+    // Do not clobber state already accumulated this run.
     if (sessions[sessionID]) return
-    setSessions(sessionID, loaded)
+    const byModel: Record<string, ModelTotals> = {}
+    for (const [model, t] of Object.entries(byTokens)) {
+      byModel[model] = {
+        ...emptyTotals(),
+        ...t,
+        estimatedCostUsd: costFor({ ...emptyTotals(), ...t }, priceFor(model, pricing())),
+      }
+    }
+    setSessions(sessionID, {
+      sessionID,
+      lastUpdated: Date.now(),
+      currentModel: null,
+      byModel,
+      lastTurn: null,
+    })
   }
 
   // Disposers returned by api.event.on are auto-tracked by the plugin scope.
@@ -89,10 +106,21 @@ const tui: TuiPlugin = async (api) => {
     }
 
     setSessions(part.sessionID, (prev) => updateSession(prev, part.sessionID, m.modelID, delta, pricing()))
-    // Persist after every accumulation. Fire-and-forget: opencode emits
-    // step-finish serially per session so writes do not race for the same
-    // sessionID, and a brief disk lag does not affect rendering.
-    void storage.write(sessions[part.sessionID])
+    // Append one integer-token event. cost is never stored; it is derived after
+    // aggregation. Writes are a single atomic INSERT, safe across sessions/processes.
+    db.insertEvent({
+      ts: Date.now(),
+      sessionID: part.sessionID,
+      parentID: parentOf[part.sessionID] ?? null,
+      modelID: m.modelID,
+      tokens: delta,
+    })
+    // Retention: prune once per local day, on the first write of a new day.
+    const todayLocal = new Date().toLocaleDateString("en-CA")
+    if (todayLocal !== lastPrunedDate) {
+      lastPrunedDate = todayLocal
+      db.pruneOlderThan(120)
+    }
   })
 
   // Refresh plan quota whenever a turn finishes — that's when the server-side
