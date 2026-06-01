@@ -7,6 +7,7 @@ import { Db, dbPath } from "./db"
 import { loadPricing, priceFor, refreshPricing } from "./pricing"
 import { loadQuota, type Quota } from "./quota"
 import { rollupByModel, updateSession } from "./session"
+import { computeUsage, type RangeUsage } from "./usage"
 import type { ModelTotals, PriceTable, SessionState, TurnSummary } from "./types"
 
 const id = "opencode-copilot-tokens"
@@ -25,6 +26,8 @@ const tui: TuiPlugin = async (api) => {
   // request failed. Refreshed on plugin start, on every idle, and via the
   // /copilot-refresh slash command.
   const [quota, setQuota] = createSignal<Quota | null>(null)
+  // Computed on demand by /copilot-usage. Null = panel hidden.
+  const [usage, setUsage] = createSignal<RangeUsage[] | null>(null)
   const refreshQuota = () => {
     void loadQuota().then(setQuota)
   }
@@ -158,6 +161,9 @@ const tui: TuiPlugin = async (api) => {
         return (
           <box>
             <QuotaSection api={api} quota={quota()} />
+            <Show when={usage()}>
+              {(u: () => RangeUsage[]) => <UsagePanel api={api} ranges={u()} />}
+            </Show>
             <Show when={visible()}>
               <Show
                 when={state()}
@@ -199,6 +205,17 @@ const tui: TuiPlugin = async (api) => {
         slashName: "copilot-refresh",
         run() {
           refreshQuota()
+        },
+      },
+      {
+        name: "copilot-tokens.usage",
+        title: "Show Copilot usage (today / week / month)",
+        category: "Copilot",
+        namespace: "palette",
+        slashName: "copilot-usage",
+        run() {
+          // Toggle: hide if already shown, else compute fresh and show.
+          setUsage((cur) => (cur ? null : computeUsage(db, pricing(), new Date())))
         },
       },
     ],
@@ -345,6 +362,36 @@ const Panel = (props: {
       <text fg={theme().text}>
         <b>{row("TOTAL", usd(total()))}</b>
       </text>
+    </box>
+  )
+}
+
+const UsagePanel = (props: { api: TuiPluginApi; ranges: RangeUsage[] }) => {
+  const theme = () => props.api.theme.current
+  return (
+    <box>
+      <For each={props.ranges}>
+        {(r: RangeUsage) => (
+          <box>
+            <text fg={theme().textMuted}>{section(r.label)}</text>
+            <Show
+              when={r.models.length > 0}
+              fallback={<text fg={theme().textMuted}>{row("(none)", usd(0))}</text>}
+            >
+              <For each={r.models}>
+                {(mu) => (
+                  <text fg={theme().textMuted}>
+                    {row3(mu.model, fmt(mu.totals.input + mu.totals.output), usd(mu.totals.estimatedCostUsd))}
+                  </text>
+                )}
+              </For>
+              <text fg={theme().text}>
+                <b>{row("TOTAL", usd(r.totalCost))}</b>
+              </text>
+            </Show>
+          </box>
+        )}
+      </For>
     </box>
   )
 }
