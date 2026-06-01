@@ -374,10 +374,11 @@ const UsagePanel = (props: { api: TuiPluginApi; ranges: RangeUsage[] }) => {
   const theme = () => props.api.theme.current
   return (
     <box>
-      {/* On-demand block: a bold heading and a trailing rule fence it off from
-          the always-on quota/session panel so the two never blur together. */}
+      {/* On-demand block: a blank line above and a bold "Usage" heading fence
+          it off from the always-on quota/session panel above. */}
+      <text> </text>
       <text fg={theme().warning}>
-        <b>{section("Usage")}</b>
+        <b>Usage</b>
       </text>
       <For each={props.ranges}>
         {(r: RangeUsage) => (
