@@ -135,9 +135,8 @@ roll-up is purely a sidebar display concern and does not apply to range totals.
 
 ## `/copilot-usage` output
 
-`this/last` ranges share rendering; today/this-week/this-month show a per-model
-breakdown, last-week/last-month show totals only (comparison-focused, less
-screen).
+All five ranges render identically: a per-model breakdown followed by a range
+total, so the same model can be compared across periods.
 
 ```
 Today (2026-06-01)
@@ -150,6 +149,7 @@ This week (05-26 ~ 06-01)
   TOTAL                                         $X.XXXX
 
 Last week (05-19 ~ 05-25)
+  <per-model rows>
   TOTAL                                         $X.XXXX
 
 This month (2026-06)
@@ -157,6 +157,7 @@ This month (2026-06)
   TOTAL                                         $X.XXXX
 
 Last month (2026-05)
+  <per-model rows>
   TOTAL                                         $X.XXXX
 ```
 
@@ -177,5 +178,5 @@ first write of a new local date (tracked by an in-memory "last pruned date").
 
 ## Open questions
 
-None. (Week start = Monday, last-week/last-month = totals only, no migration —
-all confirmed.)
+None. (Week start = Monday, all five ranges show a per-model breakdown, no
+migration — all confirmed.)
