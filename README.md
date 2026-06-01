@@ -35,6 +35,7 @@ TOTAL            $0.2982
 - `/copilot-tokens` slash command toggles the token/cost panel (the quota header
   stays visible); preference persists across restarts
 - `/copilot-refresh` re-fetches the plan quota on demand (also auto-refreshes on every idle)
+- `/copilot-usage` — toggle a panel showing token usage and estimated cost per model for today, this/last week, and this/last month (data stored locally in `~/.local/state/opencode/copilot-tokens/usage.db`)
 - Per-session totals persist to disk, so they survive restarts
 - Pricing data bundled and **refreshed daily** from the official GitHub Copilot
   [`models-and-pricing.yml`](https://github.com/github/docs/blob/main/data/tables/copilot/models-and-pricing.yml)
@@ -111,6 +112,8 @@ and stick to it.
   automatically whenever a session goes idle).
 - Run any number of turns, switch models mid-session — the panel keeps a
   running total per model.
+- Run `/copilot-usage` to toggle a usage breakdown across today, this/last
+  week, and this/last month.
 
 ## How it works
 
@@ -174,8 +177,10 @@ efficiency across a session. They are **not** what GitHub charges you.
 
 ## Storage
 
-- `~/.local/state/opencode/copilot-tokens/<sessionID>.json` — per-session
-  cumulative totals. Survives restarts.
+- `~/.local/state/opencode/copilot-tokens/usage.db` — SQLite event log of
+  per-step integer token counts (the single source of truth for both
+  cumulative session totals and the `/copilot-usage` ranges). Rows older than
+  120 days are pruned automatically. Survives restarts.
 - `~/.cache/opencode/copilot-pricing.json` — refreshed pricing snapshot.
 - KV key `copilot-tokens.visible` — sidebar visibility preference.
 
@@ -185,10 +190,10 @@ Delete any of these freely; they will be recreated.
 
 ```bash
 bun install
-bun test           # 38 tests across compute / pricing / storage / session / quota / parse
+bun test           # tests across compute / pricing / ranges / db / usage / session / quota / parse
 bunx tsc --noEmit  # type check
 ```
 
 The plugin is a single SolidJS component (`src/tui.tsx`) on top of pure
-modules (`compute`, `pricing`, `storage`, `session`, `quota`, `auth`) each
-covered by its own test file where applicable.
+modules (`compute`, `pricing`, `ranges`, `db`, `usage`, `session`, `quota`,
+`auth`) each covered by its own test file where applicable.
