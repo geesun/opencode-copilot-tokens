@@ -277,21 +277,13 @@ const quotaLine = (q: Quota): string => {
 
 const QuotaSection = (props: { api: TuiPluginApi; quota: Quota | null }) => {
   const theme = () => props.api.theme.current
+  // Quota is unlimited for current accounts, so the live quota line is hidden.
+  // The `quota` prop and `quotaLine` helper are kept so it can be restored by
+  // rendering `quotaLine(props.quota)` here again if metered plans return.
   return (
-    <Show
-      when={props.quota}
-      fallback={
-        <text fg={theme().text}>
-          <b>Copilot Tokens</b>
-        </text>
-      }
-    >
-      {(quota: () => Quota) => (
-        <text fg={theme().warning}>
-          <b>{quotaLine(quota())}</b>
-        </text>
-      )}
-    </Show>
+    <text fg={theme().warning}>
+      <b>Copilot Tokens</b>
+    </text>
   )
 }
 
