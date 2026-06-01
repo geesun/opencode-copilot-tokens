@@ -214,7 +214,7 @@ const section = (title: string): string => {
 // sidebar title and the live quota display. Highlighted in `warning` so it
 // stands out from the muted section headers below.
 const quotaLine = (q: Quota): string => {
-  if (q.unlimited) return "Copilot ∞"
+  if (q.unlimited) return "Copilot unlimited"
   return `Copilot ${(100 - q.percentRemaining).toFixed(1)}% (${fmt(q.used)}/${fmt(q.entitlement)})`
 }
 
