@@ -382,12 +382,11 @@ const UsagePanel = (props: { api: TuiPluginApi; ranges: RangeUsage[] }) => {
       </text>
       <For each={props.ranges}>
         {(r: RangeUsage) => (
-          <box>
-            <text fg={theme().textMuted}>{section(r.label)}</text>
-            <Show
-              when={r.models.length > 0}
-              fallback={<text fg={theme().textMuted}>{row("(none)", usd(0))}</text>}
-            >
+          // Ranges with no usage (e.g. an empty last week/month) are hidden
+          // entirely rather than shown as "(none)".
+          <Show when={r.models.length > 0}>
+            <box>
+              <text fg={theme().textMuted}>{section(r.label)}</text>
               <For each={r.models}>
                 {(mu) => (
                   <text fg={theme().text}>
@@ -395,12 +394,11 @@ const UsagePanel = (props: { api: TuiPluginApi; ranges: RangeUsage[] }) => {
                   </text>
                 )}
               </For>
-              <text fg={theme().textMuted}>{rule()}</text>
               <text fg={theme().text}>
                 <b>{row("TOTAL", usd(r.totalCost))}</b>
               </text>
-            </Show>
-          </box>
+            </box>
+          </Show>
         )}
       </For>
     </box>
