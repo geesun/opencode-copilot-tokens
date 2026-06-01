@@ -164,8 +164,8 @@ const tui: TuiPlugin = async (api) => {
         const byModel = () => rollupByModel(sessions, props.session_id, parentOf)
         return (
           <box>
-            <QuotaSection api={api} quota={quota()} />
             <Show when={visible()}>
+              <QuotaSection api={api} quota={quota()} />
               <Show
                 when={state()}
                 fallback={
@@ -187,10 +187,20 @@ const tui: TuiPlugin = async (api) => {
   api.keymap.registerLayer({
     priority: 1000,
     commands: [
-      // The `/copilot-tokens` toggle and `/copilot-refresh` commands are no
-      // longer registered (the panel is always shown and quota is unlimited).
-      // Their logic (`setVisible`, `refreshQuota`) is kept above so the
-      // commands can be restored by re-adding entries here.
+      {
+        name: "copilot-tokens.toggle",
+        title: "Toggle Copilot tokens panel",
+        category: "Copilot",
+        namespace: "palette",
+        slashName: "copilot-tokens",
+        run() {
+          setVisible((x) => {
+            const next = !x
+            api.kv.set(KV_VISIBLE, next)
+            return next
+          })
+        },
+      },
       {
         name: "copilot-tokens.usage",
         title: "Show Copilot usage (today / week / month)",
