@@ -389,9 +389,15 @@ const UsagePanel = (props: { api: TuiPluginApi; ranges: RangeUsage[] }) => {
             >
               <For each={r.models}>
                 {(mu) => (
-                  <text fg={theme().textMuted}>
-                    {row3(mu.model, fmt(mu.totals.input + mu.totals.output), usd(mu.totals.estimatedCostUsd))}
-                  </text>
+                  <box>
+                    {/* Model names overflow row3's label column, so give the
+                        name its own line and indent the numbers below it —
+                        same layout the Session/Last-turn panels use. */}
+                    <text fg={theme().text}>{mu.model}</text>
+                    <text fg={theme().textMuted}>
+                      {row3("", fmt(mu.totals.input + mu.totals.output), usd(mu.totals.estimatedCostUsd))}
+                    </text>
+                  </box>
                 )}
               </For>
               <text fg={theme().text}>
