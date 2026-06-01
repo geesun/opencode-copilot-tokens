@@ -259,13 +259,13 @@ const section = (title: string): string => {
   return title + " " + "─".repeat(Math.max(pad, 0))
 }
 
-// Indented variants for the /copilot-usage sub-ranges: the model name and the
-// TOTAL row sit one step in from the range header, with a short rule above the
-// total — mirroring the main panel's "rule then TOTAL" cadence.
-const IND = "  "
-const innerRule = (): string => IND + "─".repeat(PANEL_W - IND.length)
-const innerTotal = (value: string): string =>
-  IND + "TOTAL".padEnd(LABEL_W) + " " + value.padStart(VALUE_W - IND.length)
+// "claude-opus-4.8              $6.5743" — model name on the left, cost right-
+// aligned to the panel edge regardless of the name's length. Used by the
+// /copilot-usage ranges, where the token count is omitted as not useful.
+const modelCost = (model: string, value: string): string => {
+  const pad = PANEL_W - model.length - value.length
+  return model + " ".repeat(Math.max(pad, 1)) + value
+}
 
 // "Copilot 10.0% (100/1000)"  — single-line header that doubles as the
 // sidebar title and the live quota display. Highlighted in `warning` so it
@@ -390,26 +390,19 @@ const UsagePanel = (props: { api: TuiPluginApi; ranges: RangeUsage[] }) => {
             >
               <For each={r.models}>
                 {(mu) => (
-                  <box>
-                    {/* Model names overflow row3's label column, so give the
-                        name its own line and indent the numbers below it —
-                        same layout the Session/Last-turn panels use. */}
-                    <text fg={theme().text}>{IND + mu.model}</text>
-                    <text fg={theme().textMuted}>
-                      {row3("", fmt(mu.totals.input + mu.totals.output), usd(mu.totals.estimatedCostUsd))}
-                    </text>
-                  </box>
+                  <text fg={theme().text}>
+                    {modelCost(mu.model, usd(mu.totals.estimatedCostUsd))}
+                  </text>
                 )}
               </For>
-              <text fg={theme().textMuted}>{innerRule()}</text>
+              <text fg={theme().textMuted}>{rule()}</text>
               <text fg={theme().text}>
-                <b>{innerTotal(usd(r.totalCost))}</b>
+                <b>{row("TOTAL", usd(r.totalCost))}</b>
               </text>
             </Show>
           </box>
         )}
       </For>
-      <text fg={theme().textMuted}>{rule()}</text>
     </box>
   )
 }
