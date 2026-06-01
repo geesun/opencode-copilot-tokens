@@ -2,6 +2,7 @@
 import type { TuiPlugin, TuiPluginApi, TuiPluginModule } from "@opencode-ai/plugin/tui"
 import { createSignal, For, Show } from "solid-js"
 import { createStore } from "solid-js/store"
+import { ModelRegistry } from "./attribution"
 import { costBreakdown, costFor, emptyTotals, type StepDelta } from "./compute"
 import { Db, dbPath } from "./db"
 import { loadPricing, priceFor, refreshPricing } from "./pricing"
@@ -13,8 +14,6 @@ import type { ModelTotals, PriceTable, SessionState, TurnSummary } from "./types
 const id = "opencode-copilot-tokens"
 const COPILOT = "github-copilot"
 const KV_VISIBLE = "copilot-tokens.visible"
-
-type SessionMeta = { providerID: string; modelID: string }
 
 const tui: TuiPlugin = async (api) => {
   // Restore the user's last preference. api.kv.get is synchronous; the second
@@ -49,7 +48,9 @@ const tui: TuiPlugin = async (api) => {
   // re-renders when a subagent session is first learned about.
   const [parentOf, setParentOf] = createStore<Record<string, string>>({})
   // Internal-only lookup, never read in the render path, so a plain Map is fine.
-  const meta = new Map<string, SessionMeta>()
+  // Keyed by messageID (not sessionID): a session can use multiple models, and a
+  // step-finish part must be attributed to the model that produced ITS message.
+  const registry = new ModelRegistry()
   const db = new Db(dbPath())
   db.pruneOlderThan(120)
   // Tracks the local date of the last retention prune so we prune at most once
@@ -87,7 +88,7 @@ const tui: TuiPlugin = async (api) => {
     const info = event.properties.info
     if (info.role !== "assistant") return
     if (!info.providerID || !info.modelID) return
-    meta.set(info.sessionID, { providerID: info.providerID, modelID: info.modelID })
+    registry.remember(info.id, { providerID: info.providerID, modelID: info.modelID })
     // Hydrate as soon as we see any assistant message for this session, so
     // cumulative totals survive opencode restarts even before the user opens
     // the sidebar.
@@ -97,7 +98,10 @@ const tui: TuiPlugin = async (api) => {
   api.event.on("message.part.updated", (event) => {
     const part = event.properties.part
     if (part.type !== "step-finish") return
-    const m = meta.get(part.sessionID)
+    // Attribute by the part's OWN message, not the session's last-seen model:
+    // a session may use several models. messageIDs are globally unique (never
+    // reused, even across revert), so this maps each step to its true model.
+    const m = registry.resolve(part.messageID)
     if (!m || m.providerID !== COPILOT) return
 
     const delta: StepDelta = {
