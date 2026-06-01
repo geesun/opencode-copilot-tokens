@@ -187,30 +187,10 @@ const tui: TuiPlugin = async (api) => {
   api.keymap.registerLayer({
     priority: 1000,
     commands: [
-      {
-        name: "copilot-tokens.toggle",
-        title: "Toggle Copilot tokens panel",
-        category: "Copilot",
-        namespace: "palette",
-        slashName: "copilot-tokens",
-        run() {
-          setVisible((x) => {
-            const next = !x
-            api.kv.set(KV_VISIBLE, next)
-            return next
-          })
-        },
-      },
-      {
-        name: "copilot-tokens.refresh",
-        title: "Refresh Copilot plan quota",
-        category: "Copilot",
-        namespace: "palette",
-        slashName: "copilot-refresh",
-        run() {
-          refreshQuota()
-        },
-      },
+      // The `/copilot-tokens` toggle and `/copilot-refresh` commands are no
+      // longer registered (the panel is always shown and quota is unlimited).
+      // Their logic (`setVisible`, `refreshQuota`) is kept above so the
+      // commands can be restored by re-adding entries here.
       {
         name: "copilot-tokens.usage",
         title: "Show Copilot usage (today / week / month)",
