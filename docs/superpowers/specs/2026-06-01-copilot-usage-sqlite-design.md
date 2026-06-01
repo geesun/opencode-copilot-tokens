@@ -83,8 +83,7 @@ CREATE TABLE IF NOT EXISTS events (
   output      INTEGER NOT NULL,
   cache_read  INTEGER NOT NULL,
   cache_write INTEGER NOT NULL,
-  reasoning   INTEGER NOT NULL,
-  cost_usd    REAL    NOT NULL
+  reasoning   INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_events_date    ON events(date);
 CREATE INDEX IF NOT EXISTS idx_events_session ON events(session_id);
@@ -93,22 +92,54 @@ CREATE INDEX IF NOT EXISTS idx_events_session ON events(session_id);
 `date` is denormalized from `ts` using the **system local** timezone so
 day/week/month grouping is a plain string/range comparison.
 
+**No cost column.** Token counts are stored as exact integers; cost is *never*
+stored and *never* summed. Every cost figure (sidebar, today, week, month) is
+derived at query/render time from the **summed integer token totals** per model.
+
+### Why store tokens, not cost (premature-rounding hazard)
+
+Cost is linear in tokens, but per-step costs are tiny (a 10-token step might be
+$0.00003). If a per-step cost were rounded to display precision (4 decimals)
+before being stored or summed, it would round to $0.0000 and the money would be
+lost; thousands of such steps would still sum to $0.00 even though the true
+aggregate is significant.
+
+The fix is to defer pricing until after aggregation: keep raw integer tokens,
+sum them exactly (`SUM` over integers cannot lose precision), and apply the
+per-model rate **once** to the summed totals:
+
+```
+cost(range, model) = SUM(input)·rate_in + SUM(output)·rate_out
+                   + SUM(cache_read)·rate_cr + SUM(cache_write)·rate_cw
+                   + SUM(reasoning)·rate_out      (all ÷ 1,000,000)
+```
+
+Small amounts accumulate as integers before the single multiply, so nothing
+rounds to zero. This is exactly what the sidebar's `updateSession` already does
+(`accumulate` tokens, then `costFor`), so behavior stays consistent. Pricing
+uses the current `pricing.ts` table (prices are treated as stable; no per-step
+price snapshot is stored).
+
 ## Module structure
 
 - **New `src/db.ts`** — wraps `bun:sqlite` `Database`. Public API:
-  - `insertEvent(row)` — append one step-finish row.
+  - `insertEvent(row)` — append one step-finish row of integer token counts.
   - `loadSession(sessionID)` — `SUM(...) GROUP BY model_id` for one session,
-    returns the `byModel` shape used to rebuild `SessionState`.
+    returns per-model integer token totals used to rebuild `SessionState`.
   - `usage(range: { start: string; end: string })` — `SUM(...) GROUP BY model_id`
-    within an inclusive date range; returns per-model totals + a grand total.
+    within an inclusive date range; returns per-model integer token totals.
   - `pruneOlderThan(days)` — `DELETE FROM events WHERE date < cutoff`.
+  - `db.ts` returns only token totals; cost is computed by callers via
+    `compute.ts` (`costFor` / `costBreakdown`) from those totals.
 - **Replace `src/storage.ts`** — removed; `db.ts` takes over persistence.
 - **`src/tui.tsx`** — write path calls `db.insertEvent`; hydrate calls
   `db.loadSession`; register `/copilot-usage`; add a `UsagePanel` (or command
-  output) rendering the five ranges.
+  output) rendering the five ranges, costing each range's summed tokens per model
+  via `costFor`.
 - **`src/session.ts` / `src/compute.ts`** — unchanged; in-memory accumulation and
   cost math are reused. `loadSession` rebuilds `SessionState` with `byModel` set
-  and `lastTurn = null` (last turn is transient and resets on restart, as today).
+  (cost recomputed from the summed tokens) and `lastTurn = null` (last turn is
+  transient and resets on restart, as today).
 
 ## Date range helpers (local time, week starts Monday)
 
@@ -127,6 +158,9 @@ from a given "now", so it is unit-testable:
   `SELECT model_id, SUM(input)... FROM events WHERE session_id = ? GROUP BY model_id`
 - Usage range:
   `SELECT model_id, SUM(input)... FROM events WHERE date BETWEEN ? AND ? GROUP BY model_id`
+
+Both return per-model **integer token totals**; the caller prices each model's
+totals once via `costFor` and sums for the grand total.
 
 Daily/weekly/monthly totals **sum all events in the range regardless of
 session**. Each step-finish is recorded once under the session it occurred in
@@ -170,9 +204,12 @@ first write of a new local date (tracked by an in-memory "last pruned date").
 
 - `db.ts` against an in-memory database (`:memory:`):
   - insert several events across sessions/models/dates → assert `usage(range)`
-    per-model and grand totals,
-  - assert `loadSession` reconstructs per-model totals,
+    returns the correct per-model **integer token totals**,
+  - assert `loadSession` reconstructs per-model token totals,
   - assert `pruneOlderThan` deletes only rows older than the cutoff.
+- Cost derivation (`compute.ts`, already covered): assert that pricing the summed
+  token totals once matches the expected aggregate, and that many tiny-token
+  steps summed-then-priced do **not** round to zero.
 - Date-range helpers: pin "now" and assert each of the five `{start,end}` pairs,
   including Monday week start and month/year boundary cases (e.g. now = Jan 1).
 
