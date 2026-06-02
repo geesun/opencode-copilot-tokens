@@ -1,4 +1,6 @@
-export type ModelMeta = { providerID: string; modelID: string }
+// `createdAt` is the message's time.created, used to drop fork-copied messages
+// (which preserve their original, pre-fork timestamp). See src/fork.ts.
+export type ModelMeta = { providerID: string; modelID: string; createdAt?: number }
 
 // Tracks the (provider, model) that produced each assistant message so a
 // step-finish part can be attributed to the model that actually generated it —

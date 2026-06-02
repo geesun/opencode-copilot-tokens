@@ -1,54 +1,18 @@
-// opencode's `/fork` creates a NEW session that is a deep COPY of an existing
-// session's entire message/part history. Every copied step-finish part is
-// recreated with a fresh id and re-emitted through `message.part.updated`, so
-// to our event handler a fork looks like thousands of brand-new turns. But no
-// model was ever called — forking copies bytes, it does not spend tokens — so
-// counting those parts inflates both the forked session's totals and the
-// today/week/month usage log (a single fork added ~110M phantom tokens in
-// practice, and forks-of-forks multiply it).
+// Deterministic fork-copy detection.
 //
-// There is no structured "this is a fork" flag on the Session object; the only
-// marker is the auto-generated " (fork #N)" title suffix. The copied history
-// arrives as a dense burst right after creation (measured: ~1270 parts in
-// ~2.2s), while genuine new turns in the fork come many seconds later. So we:
-//   1. flag a session as a fork from its title, and
-//   2. swallow its step-finish parts while they keep arriving back-to-back,
-//      resuming normal counting once activity settles (a gap > settleMs).
-const FORK_TITLE = /\(fork #\d+\)$/
-
-export class ForkTracker {
-  // sessionID -> ts of the last suppressed (imported) step-finish. Presence
-  // means we are still swallowing this fork's copied history. 0 = flagged but
-  // no parts seen yet.
-  private importing = new Map<string, number>()
-  // Every fork session we have already flagged, so a later session.updated
-  // carrying the same "(fork #N)" title never re-arms suppression after the
-  // import has settled.
-  private seen = new Set<string>()
-
-  constructor(private settleMs = 3000) {}
-
-  // Call on session.created / session.updated. Arms suppression the first time
-  // we see a fork-titled session.
-  noteSession(id: string, title: string | undefined): void {
-    if (!title || !FORK_TITLE.test(title)) return
-    if (this.seen.has(id)) return
-    this.seen.add(id)
-    this.importing.set(id, 0)
-  }
-
-  // Whether a step-finish in `sessionID` at `now` is real spend to be counted.
-  // Returns false only for parts that belong to a fork's initial copy burst.
-  shouldCount(sessionID: string, now: number): boolean {
-    const last = this.importing.get(sessionID)
-    if (last === undefined) return true // not a fork import → normal spend
-    if (last !== 0 && now - last >= this.settleMs) {
-      // Burst has settled; this is genuine new activity in the fork.
-      this.importing.delete(sessionID)
-      return true
-    }
-    // First copied part (last === 0) or still inside the burst → swallow.
-    this.importing.set(sessionID, now)
-    return false
-  }
+// opencode's `/fork` (Session.fork in packages/opencode/src/session/session.ts)
+// creates a NEW session via createNext — which stamps `time.created = Date.now()`
+// and emits `session.created` — and THEN clones the source session's messages
+// with `updateMessage({ ...msg.info, id: newID, sessionID })`. The spread keeps
+// each cloned message's ORIGINAL `time.created`, so every copy predates the
+// session it was copied into. Any genuinely new turn (including revert+
+// regenerate) is created at/after the session.
+//
+// Hence the exact, heuristic-free rule below: a step-finish belongs to a fork's
+// copied history iff its message was created before its session. Forking
+// performs no model calls, so those copies must not be counted as spend. In a
+// normal session every message is created at/after the session, so this never
+// suppresses real activity.
+export function isForkCopy(messageCreated: number, sessionCreated: number): boolean {
+  return messageCreated < sessionCreated
 }
