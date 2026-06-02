@@ -3,6 +3,7 @@ import type { TuiPlugin, TuiPluginApi, TuiPluginModule } from "@opencode-ai/plug
 import { createSignal, For, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { ModelRegistry } from "./attribution"
+import { ForkTracker } from "./fork"
 import { costBreakdown, costFor, emptyTotals, type StepDelta } from "./compute"
 import { Db, dbPath } from "./db"
 import { loadPricing, priceFor, refreshPricing } from "./pricing"
@@ -51,6 +52,10 @@ const tui: TuiPlugin = async (api) => {
   // Keyed by messageID (not sessionID): a session can use multiple models, and a
   // step-finish part must be attributed to the model that produced ITS message.
   const registry = new ModelRegistry()
+  // opencode's /fork deep-copies an existing session's history into a new
+  // session and re-emits every step-finish part. Those are copies, not new
+  // spend, so the tracker swallows a fork's initial copy burst.
+  const forks = new ForkTracker()
   const db = new Db(dbPath())
   db.pruneOlderThan(120)
   // Tracks the local date of the last retention prune so we prune at most once
@@ -104,6 +109,11 @@ const tui: TuiPlugin = async (api) => {
     const m = registry.resolve(part.messageID)
     if (!m || m.providerID !== COPILOT) return
 
+    // Drop step-finish parts that belong to a /fork's copied history: forking
+    // performs no model calls, so counting them would inflate both this
+    // session's totals and the usage log.
+    if (!forks.shouldCount(part.sessionID, Date.now())) return
+
     const delta: StepDelta = {
       input: part.tokens.input,
       output: part.tokens.output,
@@ -147,8 +157,14 @@ const tui: TuiPlugin = async (api) => {
     setParentOf(info.id, info.parentID)
     void hydrate(info.id)
   }
-  api.event.on("session.updated", (event) => learnParent(event.properties.info))
-  api.event.on("session.created", (event) => learnParent(event.properties.info))
+  api.event.on("session.updated", (event) => {
+    forks.noteSession(event.properties.info.id, event.properties.info.title)
+    learnParent(event.properties.info)
+  })
+  api.event.on("session.created", (event) => {
+    forks.noteSession(event.properties.info.id, event.properties.info.title)
+    learnParent(event.properties.info)
+  })
 
   api.slots.register({
     order: 350,
