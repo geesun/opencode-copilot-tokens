@@ -1,5 +1,6 @@
 import { Database } from "bun:sqlite"
-import { join } from "node:path"
+import { mkdirSync } from "node:fs"
+import { dirname, join } from "node:path"
 import { homedir } from "node:os"
 import { localDate } from "./ranges"
 import type { StepDelta } from "./compute"
@@ -50,6 +51,13 @@ export class Db {
   private db: Database
 
   constructor(path: string) {
+    // bun:sqlite does not create missing parent directories — on first run the
+    // ~/.local/state/opencode/copilot-tokens dir does not exist yet and opening
+    // the database would throw "unable to open database file". Special SQLite
+    // paths (":memory:", "") used by tests have no directory to create.
+    if (path && !path.startsWith(":")) {
+      mkdirSync(dirname(path), { recursive: true })
+    }
     this.db = new Database(path)
     this.db.exec("PRAGMA journal_mode = WAL")
     this.db.exec("PRAGMA busy_timeout = 5000")
