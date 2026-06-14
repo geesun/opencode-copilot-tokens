@@ -9,7 +9,6 @@ import { Db, dbPath } from "./db"
 import { loadPricing, priceFor, refreshPricing } from "./pricing"
 import { loadQuota, type Quota } from "./quota"
 import { rollupByModel, updateSession } from "./session"
-import { computeUsage, type RangeUsage } from "./usage"
 import type { ModelTotals, PriceTable, SessionState, TurnSummary } from "./types"
 
 const id = "opencode-copilot-tokens"
@@ -26,8 +25,6 @@ const tui: TuiPlugin = async (api) => {
   // request failed. Refreshed on plugin start, on every idle, and via the
   // /copilot-refresh slash command.
   const [quota, setQuota] = createSignal<Quota | null>(null)
-  // Computed on demand by /copilot-usage. Null = panel hidden.
-  const [usage, setUsage] = createSignal<RangeUsage[] | null>(null)
   const refreshQuota = () => {
     void loadQuota().then(setQuota)
   }
@@ -198,9 +195,6 @@ const tui: TuiPlugin = async (api) => {
                 {(s) => <Panel api={api} byModel={byModel()} lastTurn={s().lastTurn} pricing={pricing()} />}
               </Show>
             </Show>
-            <Show when={usage()}>
-              {(u: () => RangeUsage[]) => <UsagePanel api={api} ranges={u()} />}
-            </Show>
           </box>
         )
       },
@@ -222,17 +216,6 @@ const tui: TuiPlugin = async (api) => {
             api.kv.set(KV_VISIBLE, next)
             return next
           })
-        },
-      },
-      {
-        name: "copilot-tokens.usage",
-        title: "Show Copilot usage (today / week / month)",
-        category: "Copilot",
-        namespace: "palette",
-        slashName: "copilot-usage",
-        run() {
-          // Toggle: hide if already shown, else compute fresh and show.
-          setUsage((cur) => (cur ? null : computeUsage(db, pricing(), new Date())))
         },
       },
     ],
@@ -270,14 +253,6 @@ const rule = (): string => "─".repeat(PANEL_W)
 const section = (title: string): string => {
   const pad = PANEL_W - title.length - 1
   return title + " " + "─".repeat(Math.max(pad, 0))
-}
-
-// "claude-opus-4.8              $6.5743" — model name on the left, cost right-
-// aligned to the panel edge regardless of the name's length. Used by the
-// /copilot-usage ranges, where the token count is omitted as not useful.
-const modelCost = (model: string, value: string): string => {
-  const pad = PANEL_W - model.length - value.length
-  return model + " ".repeat(Math.max(pad, 1)) + value
 }
 
 // "Copilot 10.0% (100/1000)"  — single-line header that doubles as the
@@ -379,41 +354,6 @@ const Panel = (props: {
       <text fg={theme().text}>
         <b>{row("TOTAL", usd(total()))}</b>
       </text>
-    </box>
-  )
-}
-
-const UsagePanel = (props: { api: TuiPluginApi; ranges: RangeUsage[] }) => {
-  const theme = () => props.api.theme.current
-  return (
-    <box>
-      {/* On-demand block: a blank line above and a bold "Usage" heading fence
-          it off from the always-on quota/session panel above. */}
-      <text> </text>
-      <text fg={theme().warning}>
-        <b>Usage</b>
-      </text>
-      <For each={props.ranges}>
-        {(r: RangeUsage) => (
-          // Ranges with no usage (e.g. an empty last week/month) are hidden
-          // entirely rather than shown as "(none)".
-          <Show when={r.models.length > 0}>
-            <box>
-              <text fg={theme().textMuted}>{section(r.label)}</text>
-              <For each={r.models}>
-                {(mu) => (
-                  <text fg={theme().text}>
-                    {modelCost(mu.model, usd(mu.totals.estimatedCostUsd))}
-                  </text>
-                )}
-              </For>
-              <text fg={theme().text}>
-                <b>{row("TOTAL", usd(r.totalCost))}</b>
-              </text>
-            </box>
-          </Show>
-        )}
-      </For>
     </box>
   )
 }
