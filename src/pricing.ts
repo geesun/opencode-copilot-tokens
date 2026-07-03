@@ -59,7 +59,7 @@ const unquote = (raw: string): string => {
   return trimmed
 }
 
-const stripFootnotes = (name: string): string => name.replace(/\[\^\d+\]/g, "").trim()
+const stripFootnotes = (name: string): string => name.replace(/\[\^.+?\]/g, "").trim()
 
 // "Claude Sonnet 4.5" → "claude-sonnet-4.5"
 // "GPT-5 mini"       → "gpt-5-mini"
